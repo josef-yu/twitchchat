@@ -1,10 +1,11 @@
-use crate::utils::{Codec, MessageHandler};
+use crate::utils::{Codec, MessageFilter};
 use std::net::TcpStream;
-use std::time;
 use std::io::ErrorKind;
+use std::time::Duration;
+use rand::{thread_rng, Rng};
 
 pub struct IrcChatScraper<'a> {
-    codec: Codec,
+    codec: Codec<TcpStream>,
     reconnect_time: u64,
     auth: &'a str,
     channel: &'a str,
@@ -13,10 +14,12 @@ pub struct IrcChatScraper<'a> {
 impl<'a> IrcChatScraper<'a> {
     const IRC_SERVER: &'a str = "irc.chat.twitch.tv:6667";
 
-    pub fn connect(auth: &'a str, channel: &'a str) -> std::io::Result<IrcChatScraper<'a>> {
+    pub fn connect(auth: &'a str, channel: &'a str) -> std::io::Result<Self> {
         print!("Connecting...");
-        if let Ok(stream) = TcpStream::connect(IrcChatScraper::IRC_SERVER) {
+        if let Ok(stream) = TcpStream::connect(Self::IRC_SERVER) {
             println!(" Success!");
+            stream.set_read_timeout(Some(Duration::from_secs(180)))
+                .expect("Setting read timeout failed!");
             Ok(IrcChatScraper {
                 codec: Codec::new(stream)?,
                 reconnect_time: 0,
@@ -25,19 +28,24 @@ impl<'a> IrcChatScraper<'a> {
             })
         } else {
             println!(" Failed!");
-            return Err(std::io::Error::new(ErrorKind::Other, "s"))
+            return Err(std::io::Error::new(ErrorKind::Other, "Connection failure"))
         }
 
     }
 
     fn reconnect(&mut self) -> std::io::Result<()> {
         println!("Reconnecting...");
-        std::thread::sleep(time::Duration::from_secs(self.reconnect_time));
-        if let Ok(stream) = TcpStream::connect(IrcChatScraper::IRC_SERVER) {
+        std::thread::sleep(Duration::from_secs(self.reconnect_time));
+        if let Ok(stream) = TcpStream::connect(Self::IRC_SERVER) {
             self.codec = Codec::new(stream)?;
+            self.init_irc()?;
         } else {
+            if self.reconnect_time >= 6 {
+                return Err(std::io::Error::new(ErrorKind::Other, "Cannot reconnect to IRC server"));
+            }
             self.reconnect_time += 1;
             self.reconnect()?;
+
         }
         Ok(())
     }
@@ -48,7 +56,7 @@ impl<'a> IrcChatScraper<'a> {
         self.codec.send(&*format!("JOIN #{}\n", self.channel))?;
 
         /*Receives the first 10 lines of messages from the IRC
-        so that when scraping starts, the messages to be received are
+        so that when scrape() is called, the messages to be received are
         the twitch chat messages.
          */
         for _ in 0..10 {
@@ -78,10 +86,10 @@ impl<'a> IrcChatScraper<'a> {
                 continue
             }
 
-            let trimmed_msg = MessageHandler::filter_irc(&raw_message);
-            println!("{}", trimmed_msg);
+            let (username, trimmed_msg) = Self::filter(&raw_message);
+            let mut color_rng = thread_rng();
+            println!("\x1B[{}m{}\x1B[0m: {}", color_rng.gen_range(31..36),username, trimmed_msg);
         }
-
-        Ok(())
     }
 }
+

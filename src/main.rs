@@ -8,8 +8,8 @@ fn main(){
         std::process::exit(1);
     });
 
-    if let Err(e) = twitchchat::run(config) {
-        eprintln!("Application error: {}", e);
+    if let Err(err) = twitchchat::run(config) {
+        eprintln!("Application error: {}", err);
         std::process::exit(1);
     }
 }

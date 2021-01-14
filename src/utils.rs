@@ -1,18 +1,23 @@
 use std::net::TcpStream;
 use std::io::prelude::*;
-use regex::Regex;
+use std::io::{BufReader, LineWriter};
+use std::fs::File;
+use crate::irc_chat::IrcChatScraper;
 use gh_emoji::Replacer;
+use regex::Regex;
 
-pub struct Codec {
-    reader: std::io::BufReader<TcpStream>,
-    writer: std::io::LineWriter<TcpStream>
+pub struct Codec<T>
+    where T: Read + Write {
+    reader: BufReader<T>,
+    writer: LineWriter<T>
 }
 
-impl Codec {
-    pub fn new(stream: TcpStream) -> std::io::Result<Self> {
-        let writer = std::io::LineWriter::new(stream.try_clone()?);
-        let reader = std::io::BufReader::new(stream);
-        Ok(Self{reader,writer})
+impl<T> Codec<T>
+where T: TryClone<T> + Read + Write {
+    pub fn new(stream: T) -> std::io::Result<Self> {
+        let writer = LineWriter::new(stream.try_clone()?);
+        let reader = BufReader::new(stream);
+        Ok(Self{reader, writer})
     }
 
     pub fn send(&mut self, message: &str) -> std::io::Result<()> {
@@ -27,16 +32,32 @@ impl Codec {
     }
 }
 
-pub struct MessageHandler;
-impl MessageHandler {
-    pub fn filter_irc(msg: &String) -> String {
+
+pub trait MessageFilter {
+    fn filter(msg: &String) -> (String, String);
+}
+
+impl MessageFilter for IrcChatScraper<'_> {
+    fn filter(msg: &String) -> (String, String) {
         let cap = Regex::new(r":(.*)!.*@.*\.tmi\.twitch\.tv PRIVMSG #.* :(.*)").unwrap()
             .captures(msg).unwrap();
         let demojied_msg = Replacer::new().replace_all(&cap[2]);
-        format!("{}: {}", &cap[1], demojied_msg.to_string())
+        ((&cap[1]).to_string(), demojied_msg.to_string())
     }
-
 }
 
+pub trait TryClone<T> {
+    fn try_clone(&self) -> std::io::Result<T>;
+}
 
+impl TryClone<TcpStream> for TcpStream {
+    fn try_clone(&self) -> std::io::Result<TcpStream> {
+        Ok(self.try_clone()?)
+    }
+}
 
+impl TryClone<File> for File {
+    fn try_clone(&self) -> std::io::Result<File> {
+        Ok(self.try_clone()?)
+    }
+}
