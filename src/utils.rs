@@ -1,5 +1,7 @@
 use std::net::TcpStream;
 use std::io::prelude::*;
+use regex::Regex;
+use gh_emoji::Replacer;
 
 pub struct Codec {
     reader: std::io::BufReader<TcpStream>,
@@ -25,6 +27,16 @@ impl Codec {
     }
 }
 
+pub struct MessageHandler;
+impl MessageHandler {
+    pub fn filter_irc(msg: &String) -> String {
+        let cap = Regex::new(r":(.*)!.*@.*\.tmi\.twitch\.tv PRIVMSG #.* :(.*)").unwrap()
+            .captures(msg).unwrap();
+        let demojied_msg = Replacer::new().replace_all(&cap[2]);
+        format!("{}: {}", &cap[1], demojied_msg.to_string())
+    }
+
+}
 
 
 

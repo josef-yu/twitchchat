@@ -6,7 +6,7 @@ mod irc_chat;
 use clap::{ArgMatches, App, Arg};
 use std::error::Error;
 use crate::config::{Config, Operation};
-use crate::irc_chat::scrape_irc;
+use crate::irc_chat::IrcChatScraper;
 
 pub fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("Twitch Chat Scraper")
@@ -49,7 +49,10 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     match config.operation {
         Operation::Token(_) => {},
         Operation::VodChat(_) => {},
-        Operation::ChannelChat(_) => scrape_irc(config)?,
+        Operation::ChannelChat(_) => {
+            IrcChatScraper::connect(config.auth, config.operation.get_value().unwrap())?
+                .scrape()?;
+        },
     }
 
     Ok(())
