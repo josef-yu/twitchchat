@@ -1,12 +1,14 @@
-#![feature(in_band_lifetimes)]
 pub mod utils;
 pub mod config;
+pub mod twitch;
 mod irc_chat;
 
 use clap::{ArgMatches, App, Arg};
 use std::error::Error;
 use crate::config::{Config, Operation};
 use crate::irc_chat::IrcChatScraper;
+
+static CLIENT_ID: &str = "b5abx04k71homlrz3v4tnuxraku4ux";
 
 pub fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("Twitch Chat Scraper")

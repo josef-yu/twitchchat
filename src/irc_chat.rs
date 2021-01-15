@@ -3,6 +3,8 @@ use std::net::TcpStream;
 use std::io::ErrorKind;
 use std::time::Duration;
 use rand::{thread_rng, Rng};
+use crossterm::event::{read,KeyEvent, Event, KeyCode, KeyModifiers};
+use crate::twitch::TwitchApiHandler;
 
 pub struct IrcChatScraper<'a> {
     codec: Codec<TcpStream>,
@@ -50,8 +52,36 @@ impl<'a> IrcChatScraper<'a> {
         Ok(())
     }
 
+    fn continue_prompt(is_live: bool) -> bool {
+        if !is_live {
+            println!("This channel is offline. Do you want to continue? y/n");
+            loop {
+
+                match read().unwrap() {
+                    Event::Key(KeyEvent{
+                                   code: KeyCode::Char('y'),
+                                   modifiers: KeyModifiers::NONE,
+                               }) => return true,
+                    Event::Key(KeyEvent{
+                                   code: KeyCode::Char('n'),
+                                   modifiers: KeyModifiers::NONE,
+                               }) => return false,
+                    _ => {}
+                }
+            }
+        } else {
+            true
+        }
+    }
+
     fn init_irc(&mut self) -> std::io::Result<()> {
-        self.codec.send(&*format!("PASS {}\n", self.auth))?;
+        let is_live = TwitchApiHandler::is_live(self.channel).unwrap();
+        let continue_prompt = Self::continue_prompt(is_live);
+        if !continue_prompt {
+            return Err(std::io::Error::new(ErrorKind::Other, "Scraping aborted"))
+        }
+
+        self.codec.send(&*format!("PASS oauth:{}\n", self.auth))?;
         self.codec.send(&*format!("NICK scraper\n"))?;
         self.codec.send(&*format!("JOIN #{}\n", self.channel))?;
 
