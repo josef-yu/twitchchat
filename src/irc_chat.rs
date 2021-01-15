@@ -12,7 +12,6 @@ pub struct IrcChatScraper<'a> {
     auth: &'a str,
     channel: &'a str,
 }
-
 impl<'a> IrcChatScraper<'a> {
     const IRC_SERVER: &'a str = "irc.chat.twitch.tv:6667";
 
@@ -47,7 +46,6 @@ impl<'a> IrcChatScraper<'a> {
             }
             self.reconnect_time += 1;
             self.reconnect()?;
-
         }
         Ok(())
     }
@@ -56,7 +54,6 @@ impl<'a> IrcChatScraper<'a> {
         if !is_live {
             println!("This channel is offline. Do you want to continue? y/n");
             loop {
-
                 match read().unwrap() {
                     Event::Key(KeyEvent{
                                    code: KeyCode::Char('y'),
@@ -75,23 +72,26 @@ impl<'a> IrcChatScraper<'a> {
     }
 
     fn init_irc(&mut self) -> std::io::Result<()> {
-        let is_live = TwitchApiHandler::is_live(self.channel).unwrap();
+        let is_live = TwitchApiHandler::is_live(self.channel)
+            .expect("Failed to fetch stream info.");
         let continue_prompt = Self::continue_prompt(is_live);
         if !continue_prompt {
             return Err(std::io::Error::new(ErrorKind::Other, "Scraping aborted"))
         }
 
         self.codec.send(&*format!("PASS oauth:{}\n", self.auth))?;
-        self.codec.send(&*format!("NICK scraper\n"))?;
+        self.codec.send("NICK scraper\n")?;
+        self.codec.send("CAP REQ :twitch.tv/tags\n")?;
         self.codec.send(&*format!("JOIN #{}\n", self.channel))?;
 
-        /*Receives the first 10 lines of messages from the IRC
+        /*Receives the first 11 lines of messages from the IRC server
         so that when scrape() is called, the messages to be received are
         the twitch chat messages.
          */
-        for _ in 0..10 {
+        for _ in 0..11 {
             let msg = self.codec.receive()?;
             if msg.is_empty() {
+                self.reconnect()?;
                 break;
             }
         }
@@ -115,7 +115,6 @@ impl<'a> IrcChatScraper<'a> {
                 self.codec.send("PONG\n")?;
                 continue
             }
-
             let (username, trimmed_msg) = Self::filter(&raw_message);
             let mut color_rng = thread_rng();
             println!("\x1B[{}m{}\x1B[0m: {}", color_rng.gen_range(31..36),username, trimmed_msg);

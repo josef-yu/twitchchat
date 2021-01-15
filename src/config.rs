@@ -1,6 +1,6 @@
 use clap::ArgMatches;
 
-static AUTH: &str = "cwvly6efav3if16yn17cfh36eoi89r";
+static AUTH: &str = "o96k9izwlxp3mqtdtj5mq2632cm5n5";
 
 pub enum Operation<'a> {
     ChannelChat(&'a str),

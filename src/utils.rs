@@ -39,10 +39,15 @@ pub trait MessageFilter {
 
 impl MessageFilter for IrcChatScraper<'_> {
     fn filter(msg: &String) -> (String, String) {
-        let cap = Regex::new(r":(.*)!.*@.*\.tmi\.twitch\.tv PRIVMSG #.* :(.*)").unwrap()
+        let cap = Regex::new(r".*;display-name=(.*?);e.*:(.*)!.*@.*\.tmi\.twitch\.tv PRIVMSG #.* :(.*)").unwrap()
             .captures(msg).unwrap();
-        let demojied_msg = Replacer::new().replace_all(&cap[2]);
-        ((&cap[1]).to_string(), demojied_msg.to_string())
+        let demojied_msg = Replacer::new().replace_all(&cap[3]);
+        let username = if (&cap[1]).is_empty() {
+            &cap[2]
+        } else {
+            &cap[1]
+        };
+        (username.to_string(), demojied_msg.to_string())
     }
 }
 

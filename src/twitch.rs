@@ -3,31 +3,31 @@ use crate::CLIENT_ID;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-pub struct Blob {
+struct Blob {
     #[serde(rename = "_total")]
     total: u64,
-    pub channels: Vec<TwitchUser>,
+    channels: Vec<TwitchUser>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct TwitchUser {
+struct TwitchUser {
     #[serde(rename = "_id")]
-    pub id: u64,
-    pub name: String,
-    pub status: Option<String>,
+    id: u64,
+    name: String,
+    status: Option<String>,
     #[serde(flatten)]
-    pub rest: serde_json::Value,
+    rest: serde_json::Value,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct TwitchUserStream {
+struct TwitchUserStream {
     pub stream: Option<StreamInfo>,
 }
 
 #[derive(Deserialize, Debug, PartialEq)]
-pub struct StreamInfo {
+struct StreamInfo {
     #[serde(flatten)]
-    pub rest: serde_json::Value,
+    rest: serde_json::Value,
 }
 
 pub struct TwitchApiHandler;
