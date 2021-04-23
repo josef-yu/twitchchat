@@ -8,7 +8,7 @@
 
 ## Commands
 
- - **Channel**. Use `-c <CHANNEL_NAME>` or `--channel <CHANNEL_NAME` for reading a twitch channel chat
+ - **Channel**. Use `-c <CHANNEL_NAME>` or `--channel <CHANNEL_NAME>` for reading a twitch channel chat
     even if the stream is offline.
    
  - **Token**. Use `-t <TOKEN>` or `--token <TOKEN>` for setting up the authorization
