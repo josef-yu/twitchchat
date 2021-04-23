@@ -4,6 +4,8 @@
 
 ---
 
+![](https://github.com/josef-yu/twitchchat/blob/master/sample1.jpg?raw=true)
+
 ## Commands
 
  - **Channel**. Use `-c <CHANNEL_NAME>` or `--channel <CHANNEL_NAME` for reading a twitch channel chat
