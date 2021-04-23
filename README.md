@@ -4,7 +4,7 @@
 
 ---
 
-![](https://github.com/josef-yu/twitchchat/blob/master/sample1.jpg?raw=true)
+![](https://github.com/josef-yu/twitchchat/blob/master/screenshot/sample1.jpg?raw=true)
 
 ## Commands
 
