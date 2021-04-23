@@ -22,9 +22,10 @@
    
 ## Todo
 
- - Implement a unique color of each user corresponding to their chosen color
-   in the Twitch App to be shown in the terminal.
+ - Implement a unique color of each user
    
  - Implement VOD chat scraping
+
+ - Implement silent mode
 
  - Better error handling
