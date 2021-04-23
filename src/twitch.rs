@@ -1,5 +1,4 @@
 use reqwest::header::{ACCEPT};
-use crate::CLIENT_ID;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -30,20 +29,36 @@ struct StreamInfo {
     rest: serde_json::Value,
 }
 
-pub struct TwitchApiHandler;
+pub struct TwitchApiHandler{
+    pub client_id: String,
+    channel: String,
+}
+
 impl TwitchApiHandler {
-    fn get_user_id(channel: &str) -> reqwest::Result<u64> {
+
+    pub fn set(client_id: String, channel: String) -> TwitchApiHandler {
+        TwitchApiHandler {
+            client_id,
+            channel
+        }
+    }
+
+    fn get_user_id(&self) -> reqwest::Result<u64> {
         let client = reqwest::blocking::Client::new();
-        let blob: Blob = client.get(
+        let response = client.get(
             "https://api.twitch.tv/kraken/search/channels")
-            .query(&[("query", channel)])
+            .query(&[("query", self.channel.clone())])
             .header(ACCEPT, "application/vnd.twitchtv.v5+json")
-            .header("Client-ID", CLIENT_ID)
+            .header("Client-ID", self.client_id.clone())
             .send()?
-            .json()?;
+            .error_for_status()
+            .expect("Invalid Client ID!");
+
+        let blob: Blob = response.json()?;
+
         let mut id = 0;
         for ch in blob.channels {
-            if ch.name == channel {
+            if ch.name == self.channel {
                 id = ch.id;
             }
         }
@@ -51,15 +66,19 @@ impl TwitchApiHandler {
         Ok(id)
     }
 
-    pub fn is_live(channel: &str) -> reqwest::Result<bool> {
-        let id = Self::get_user_id(channel)?;
+    pub fn is_live(&self) -> reqwest::Result<bool> {
+        let id = self.get_user_id()?;
         let client = reqwest::blocking::Client::new();
-        let blob: TwitchUserStream = client.get(
+        let response = client.get(
             &*format!("https://api.twitch.tv/kraken/streams/{}", id))
             .header(ACCEPT, "application/vnd.twitchtv.v5+json")
-            .header("Client-ID", CLIENT_ID)
+            .header("Client-ID", self.client_id.clone())
             .send()?
-            .json()?;
+            .error_for_status()
+            .expect("Invalid Client ID!");
+
+        let blob: TwitchUserStream = response.json()?;
+
         if let Some(_) = blob.stream {
             Ok(true)
         } else {

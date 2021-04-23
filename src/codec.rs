@@ -2,9 +2,6 @@ use std::net::TcpStream;
 use std::io::prelude::*;
 use std::io::{BufReader, LineWriter};
 use std::fs::File;
-use crate::irc_chat::IrcChatScraper;
-use gh_emoji::Replacer;
-use regex::Regex;
 
 pub struct Codec<T>
     where T: Read + Write {
@@ -29,25 +26,6 @@ where T: TryClone<T> + Read + Write {
         let mut line = String::new();
         self.reader.read_line(&mut line)?;
         Ok(line)
-    }
-}
-
-
-pub trait MessageFilter {
-    fn filter(msg: &String) -> (String, String);
-}
-
-impl MessageFilter for IrcChatScraper<'_> {
-    fn filter(msg: &String) -> (String, String) {
-        let cap = Regex::new(r".*;display-name=(.*?);e.*:(.*)!.*@.*\.tmi\.twitch\.tv PRIVMSG #.* :(.*)").unwrap()
-            .captures(msg).unwrap();
-        let demojied_msg = Replacer::new().replace_all(&cap[3]);
-        let username = if (&cap[1]).is_empty() {
-            &cap[2]
-        } else {
-            &cap[1]
-        };
-        (username.to_string(), demojied_msg.to_string())
     }
 }
 

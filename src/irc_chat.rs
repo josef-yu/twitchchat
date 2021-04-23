@@ -1,31 +1,47 @@
-use crate::utils::{Codec, MessageFilter};
 use std::net::TcpStream;
 use std::io::ErrorKind;
 use std::time::Duration;
-use rand::{thread_rng, Rng};
-use crossterm::event::{read,KeyEvent, Event, KeyCode, KeyModifiers};
+use crossterm::event::{read, KeyEvent, Event, KeyCode, KeyModifiers, poll};
+use chrono::{ Utc, TimeZone, Local, DateTime};
 use crate::twitch::TwitchApiHandler;
+use crate::credentials::Credentials;
+use crate::logger::Logger;
+use crate::codec::Codec;
+use crate::message::Message;
+
 
 pub struct IrcChatScraper<'a> {
-    codec: Codec<TcpStream>,
+    socket: Codec<TcpStream>,
     reconnect_time: u64,
     auth: &'a str,
     channel: &'a str,
+    api: TwitchApiHandler,
+    logger: Option<Logger>,
 }
 impl<'a> IrcChatScraper<'a> {
     const IRC_SERVER: &'a str = "irc.chat.twitch.tv:6667";
 
-    pub fn connect(auth: &'a str, channel: &'a str) -> std::io::Result<Self> {
+    pub fn connect(credentials: &'a Credentials, log_filename: Option<&'a str>, should_log: bool, channel: &'a str) -> std::io::Result<Self> {
         print!("Connecting...");
         if let Ok(stream) = TcpStream::connect(Self::IRC_SERVER) {
             println!(" Success!");
             stream.set_read_timeout(Some(Duration::from_secs(180)))
                 .expect("Setting read timeout failed!");
+
+            let logger: Option<Logger> = if should_log {
+                Some(Logger::init(log_filename, channel)?)
+            } else {
+                None
+            };
+
             Ok(IrcChatScraper {
-                codec: Codec::new(stream)?,
+                socket: Codec::new(stream)?,
                 reconnect_time: 0,
-                auth,
-                channel
+                auth: credentials.auth.as_str(),
+                api: TwitchApiHandler::set(credentials.client_id.clone(),
+                                           String::from(channel.to_lowercase())),
+                channel,
+                logger
             })
         } else {
             println!(" Failed!");
@@ -38,7 +54,7 @@ impl<'a> IrcChatScraper<'a> {
         println!("Reconnecting...");
         std::thread::sleep(Duration::from_secs(self.reconnect_time));
         if let Ok(stream) = TcpStream::connect(Self::IRC_SERVER) {
-            self.codec = Codec::new(stream)?;
+            self.socket = Codec::new(stream)?;
             self.init_irc()?;
         } else {
             if self.reconnect_time >= 6 {
@@ -50,7 +66,7 @@ impl<'a> IrcChatScraper<'a> {
         Ok(())
     }
 
-    fn continue_prompt(is_live: bool) -> bool {
+    fn continue_prompt(is_live: bool) -> std::io::Result<bool> {
         if !is_live {
             println!("This channel is offline. Do you want to continue? y/n");
             loop {
@@ -58,45 +74,60 @@ impl<'a> IrcChatScraper<'a> {
                     Event::Key(KeyEvent{
                                    code: KeyCode::Char('y'),
                                    modifiers: KeyModifiers::NONE,
-                               }) => return true,
+                               }) => return Ok(true),
                     Event::Key(KeyEvent{
                                    code: KeyCode::Char('n'),
                                    modifiers: KeyModifiers::NONE,
-                               }) => return false,
+                               }) => return Err(std::io::Error::new(ErrorKind::Other, "Scraping aborted")),
                     _ => {}
                 }
             }
         } else {
-            true
+            Ok(true)
         }
     }
 
-    fn init_irc(&mut self) -> std::io::Result<()> {
-        let is_live = TwitchApiHandler::is_live(self.channel)
-            .expect("Failed to fetch stream info.");
-        let continue_prompt = Self::continue_prompt(is_live);
-        if !continue_prompt {
-            return Err(std::io::Error::new(ErrorKind::Other, "Scraping aborted"))
+    fn check_key_press() -> std::io::Result<bool> {
+
+        if poll(Duration::from_millis(100)).unwrap() {
+            match read().unwrap() {
+                Event::Key(KeyEvent {
+                               code: KeyCode::Char('q'),
+                               modifiers: KeyModifiers::NONE,
+                           }) => return Ok(true),
+                _ => {}
+            }
         }
 
-        self.codec.send(&*format!("PASS oauth:{}\n", self.auth))?;
-        self.codec.send("NICK scraper\n")?;
-        self.codec.send("CAP REQ :twitch.tv/tags\n")?;
-        self.codec.send(&*format!("JOIN #{}\n", self.channel))?;
+        Ok(false)
+    }
+
+    fn init_irc(&mut self) -> std::io::Result<()> {
+        let is_live = self.api.is_live()
+            .expect("Failed to fetch stream info.");
+        Self::continue_prompt(is_live)?;
+
+        self.socket.send(&*format!("PASS oauth:{}\n", self.auth))?;
+        self.socket.send("NICK scraper\n")?;
+        self.socket.send("CAP REQ :twitch.tv/tags\n")?;
+        self.socket.send(&*format!("JOIN #{}\n", self.channel.to_lowercase()))?;
 
         /*Receives the first 11 lines of messages from the IRC server
         so that when scrape() is called, the messages to be received are
         the twitch chat messages.
          */
         for _ in 0..11 {
-            let msg = self.codec.receive()?;
+            let msg = self.socket.receive()?;
+            if msg.contains("NOTICE * :Login authentication failed") {
+                return Err(std::io::Error::new(ErrorKind::Other, "Invalid token"));
+            }
             if msg.is_empty() {
                 self.reconnect()?;
                 break;
             }
         }
 
-        println!("Now scraping twitch.tv/{} chat",self.channel);
+        println!("Now {} twitch.tv/{} chat", if self.logger.is_some() {"scraping"} else {"watching"} ,self.channel);
         Ok(())
     }
 
@@ -104,7 +135,11 @@ impl<'a> IrcChatScraper<'a> {
         self.init_irc()?;
 
         loop {
-            let raw_message = self.codec.receive()?;
+            if Self::check_key_press()? {
+                break
+            }
+
+            let raw_message = self.socket.receive()?;
 
             if raw_message.is_empty() {
                 self.reconnect()?;
@@ -112,13 +147,21 @@ impl<'a> IrcChatScraper<'a> {
             }
 
             if raw_message.starts_with("PING") {
-                self.codec.send("PONG\n")?;
+                self.socket.send("PONG\n")?;
                 continue
             }
-            let (username, trimmed_msg) = Self::filter(&raw_message);
-            let mut color_rng = thread_rng();
-            println!("\x1B[{}m{}\x1B[0m: {}", color_rng.gen_range(31..36),username, trimmed_msg);
+
+            let message = Message::filter(&raw_message);
+            message.print();
+
+            if let Some(logger) = &mut self.logger {
+                let stamp_date = Utc.timestamp_millis(message.timestamp as i64);
+                let converted: DateTime<Local> = DateTime::from(stamp_date);
+
+                logger.write(format!("[{}]{}: {}", converted.time(), message.username, message.body))?;
+            }
         }
+
+        Ok(())
     }
 }
-
