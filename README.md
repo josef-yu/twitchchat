@@ -22,10 +22,12 @@
    
 ## Todo
 
- - Implement a unique color of each user
+ - Implement a unique color for each username
    
  - Implement VOD chat scraping
 
  - Implement silent mode
+
+ - Implement hotkeys
 
  - Better error handling
