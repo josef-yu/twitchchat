@@ -39,6 +39,7 @@ impl<'a> IrcChatScraper<'a> {
                 reconnect_time: 0,
                 auth: credentials.auth.as_str(),
                 api: TwitchApiHandler::set(credentials.client_id.clone(),
+                                           credentials.auth.clone(),
                                            String::from(channel.to_lowercase())),
                 channel,
                 logger
@@ -103,13 +104,14 @@ impl<'a> IrcChatScraper<'a> {
     }
 
     fn init_irc(&mut self) -> std::io::Result<()> {
-        let is_live = self.api.is_live()
+        let (_, is_live) = self.api.get_user_channel()
             .expect("Failed to fetch stream info.");
         Self::continue_prompt(is_live)?;
 
+        self.socket.send("CAP REQ :twitch.tv/tags\n")?;
         self.socket.send(&*format!("PASS oauth:{}\n", self.auth))?;
         self.socket.send("NICK scraper\n")?;
-        self.socket.send("CAP REQ :twitch.tv/tags\n")?;
+        
         self.socket.send(&*format!("JOIN #{}\n", self.channel.to_lowercase()))?;
 
         /*Receives the first 11 lines of messages from the IRC server
@@ -118,8 +120,10 @@ impl<'a> IrcChatScraper<'a> {
          */
         for _ in 0..11 {
             let msg = self.socket.receive()?;
-            if msg.contains("NOTICE * :Login authentication failed") {
+            if msg.contains("NOTICE * :Login unsuccessful") {
                 return Err(std::io::Error::new(ErrorKind::Other, "Invalid token"));
+            } else if msg.contains("Bad Request") {
+                return Err(std::io::Error::new(ErrorKind::Other, "Bad Request"));
             }
             if msg.is_empty() {
                 self.reconnect()?;

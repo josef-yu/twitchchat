@@ -2,18 +2,17 @@ use reqwest::header::{ACCEPT};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-struct Blob {
-    #[serde(rename = "_total")]
-    total: u64,
-    channels: Vec<TwitchUser>,
+struct Blob<T> {
+    data: Vec<T>,
+    #[serde(flatten)]
+    rest: serde_json::Value
 }
 
 #[derive(Deserialize, Debug)]
 struct TwitchUser {
-    #[serde(rename = "_id")]
-    id: u64,
-    name: String,
-    status: Option<String>,
+    id: String,
+    broadcaster_login: String,
+    is_live: bool,
     #[serde(flatten)]
     rest: serde_json::Value,
 }
@@ -31,58 +30,43 @@ struct StreamInfo {
 
 pub struct TwitchApiHandler{
     pub client_id: String,
+    pub token: String,
     channel: String,
 }
 
 impl TwitchApiHandler {
 
-    pub fn set(client_id: String, channel: String) -> TwitchApiHandler {
+    pub fn set(client_id: String, token: String, channel: String) -> TwitchApiHandler {
         TwitchApiHandler {
             client_id,
-            channel
+            channel,
+            token
         }
     }
 
-    fn get_user_id(&self) -> reqwest::Result<u64> {
+    pub fn get_user_channel(&self) -> reqwest::Result<(String, bool)> {
         let client = reqwest::blocking::Client::new();
         let response = client.get(
-            "https://api.twitch.tv/kraken/search/channels")
+            "https://api.twitch.tv/helix/search/channels")
             .query(&[("query", self.channel.clone())])
             .header(ACCEPT, "application/vnd.twitchtv.v5+json")
             .header("Client-ID", self.client_id.clone())
+            .header("Authorization", format!("Bearer {}", self.token.clone()))
             .send()?
             .error_for_status()
             .expect("Invalid Client ID!");
 
-        let blob: Blob = response.json()?;
+        let blob: Blob<TwitchUser> = response.json()?;
 
-        let mut id = 0;
-        for ch in blob.channels {
-            if ch.name == self.channel {
+        let mut id = String::from("0");
+        let mut is_live = false;
+        for ch in blob.data {
+            if ch.broadcaster_login == self.channel {
                 id = ch.id;
+                is_live = ch.is_live;
             }
         }
 
-        Ok(id)
-    }
-
-    pub fn is_live(&self) -> reqwest::Result<bool> {
-        let id = self.get_user_id()?;
-        let client = reqwest::blocking::Client::new();
-        let response = client.get(
-            &*format!("https://api.twitch.tv/kraken/streams/{}", id))
-            .header(ACCEPT, "application/vnd.twitchtv.v5+json")
-            .header("Client-ID", self.client_id.clone())
-            .send()?
-            .error_for_status()
-            .expect("Invalid Client ID!");
-
-        let blob: TwitchUserStream = response.json()?;
-
-        if let Some(_) = blob.stream {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        Ok((id, is_live))
     }
 }
